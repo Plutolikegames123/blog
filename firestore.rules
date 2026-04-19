@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidBlog(blog) {
+      return blog.name is string && blog.name.size() <= 100
+        && blog.profile is map
+        && blog.settings is map
+        && blog.infoSections is list
+        && blog.contentBlocks is list;
+    }
+
+    // Blogs collection
+    match /blogs/{blogId} {
+      // Anyone can read a blog if they have the ID
+      allow get: if true;
+      allow list: if false; // Prevent scraping all blogs
+
+      // Create: Anyone can create a new blog
+      allow create: if isValidBlog(request.resource.data)
+        && request.resource.data.name.size() > 0;
+
+      // Update: For now, we allow updates. 
+      // In a production app, we would verify a password field here:
+      // allow update: if request.resource.data.password == resource.data.password;
+      // But rules can't easily "verify" a plain text password safely without auth.
+      allow update: if isValidBlog(request.resource.data)
+        && request.resource.data.name == resource.data.name; // Basic integrity
+        
+      allow delete: if false; // Prevent deletion for now
+    }
+  }
+}

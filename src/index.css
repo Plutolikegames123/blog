@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Lexend:wght@100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Lexend", sans-serif;
+}
+
+@layer utilities {
+  .columns-masonry {
+    column-count: 1;
+    column-gap: 2rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .columns-masonry {
+    column-count: 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .columns-masonry {
+    column-count: 3;
+  }
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+}
+
+@media print {
+  .no-print, 
+  button, 
+  [role="button"],
+  .fixed,
+  .sticky,
+  aside,
+  #studio-panel,
+  #impact-panel,
+  .floating-buttons {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  main {
+    overflow: visible !important;
+    height: auto !important;
+    position: static !important;
+    padding: 0 !important;
+  }
+
+  .info-item {
+    break-inside: avoid;
+    border: 1px solid #eee !important;
+    box-shadow: none !important;
+    margin-bottom: 2rem !important;
+  }
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

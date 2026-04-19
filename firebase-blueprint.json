@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "Blog": {
+      "title": "Blog",
+      "description": "Stores all the data for an individual blog instance.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "email": { "type": "string" },
+            "bio": { "type": "string" },
+            "profilePic": { "type": "string" },
+            "coverPhoto": { "type": "string" },
+            "socials": {
+              "type": "object",
+              "properties": {
+                "facebook": { "type": "string" },
+                "twitter": { "type": "string" },
+                "instagram": { "type": "string" },
+                "linkedin": { "type": "string" },
+                "youtube": { "type": "string" }
+              }
+            }
+          }
+        },
+        "infoSections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "contentBlocks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["text", "image", "video"] },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "typewriterWords": { "type": "array", "items": { "type": "string" } },
+            "fontSize": { "type": "number" },
+            "textColor": { "type": "string" },
+            "bgColor": { "type": "string" }
+          }
+        },
+        "password": { "type": "string" }
+      },
+      "required": ["name", "profile", "settings"]
+    }
+  },
+  "firestore": {
+    "/blogs/{blogId}": {
+      "schema": "Blog",
+      "description": "Collection of vibrant blogs."
+    }
+  }
+}
