@@ -15,6 +15,7 @@ import {
   Instagram, 
   Linkedin,
   Youtube,
+  Cloud,
   Image as ImageIcon,
   Type,
   Lock,
@@ -340,6 +341,20 @@ export default function App() {
     }
   };
 
+  const manualSave = async () => {
+    if (blogId) {
+      try {
+        setIsSaving(true);
+        await saveBlog(blogId, editData);
+        setLastSaved(new Date());
+      } catch (err) {
+        console.error("Manual save failed:", err);
+      } finally {
+        setTimeout(() => setIsSaving(false), 500);
+      }
+    }
+  };
+
   const handleUpdate = async () => {
     if (blogId) {
       try {
@@ -661,7 +676,14 @@ export default function App() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+               <div className="flex items-center gap-2">
+                <button 
+                  onClick={manualSave}
+                  className="bg-[#8A2BE2]/20 text-[#8A2BE2] hover:bg-[#8A2BE2]/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all flex items-center gap-1.5"
+                  title="Manual Cloud Save"
+                >
+                  <Cloud size={14} /> Save Change
+                </button>
                 <button 
                   id="print-btn"
                   onClick={handleDownloadPDF}
@@ -671,16 +693,11 @@ export default function App() {
                   <Printer size={20} />
                 </button>
                 <button 
-                  onClick={async () => {
-                    if (blogId) {
-                      setIsSaving(true);
-                      await saveBlog(blogId, editData);
-                      setIsSaving(false);
-                    }
+                  onClick={() => {
                     setIsEditPanelOpen(false);
                     setIsEditAuthenticated(false);
                   }} 
-                  className="hover:bg-gray-800 p-2 rounded-xl transition-colors"
+                  className="hover:bg-gray-800 p-2 rounded-xl transition-colors text-white/50 hover:text-white"
                 >
                   <X size={24} />
                 </button>
@@ -1033,7 +1050,7 @@ export default function App() {
                  {isSaving ? (
                    <>Saving to Cloud...</>
                  ) : (
-                   <>Save Everything <Check size={18} /></>
+                   <>Save Everything & Exit <Check size={18} /></>
                  )}
                </button>
             </div>
