@@ -27,6 +27,7 @@ import {
   Type as TypeIcon,
   Globe,
   Eye,
+  EyeOff,
   Link as LinkIcon,
   Plus,
   ExternalLink,
@@ -64,7 +65,9 @@ import {
   InfoSection, 
   blogsQuery, 
   deleteBlog, 
-  createNewBlog 
+  createNewBlog,
+  renameBlog,
+  toggleBlogStatus
 } from './lib/firebase';
 
 // --- Constants ---
@@ -205,41 +208,55 @@ export default function App() {
   const [editTab, setEditTab] = useState<'info' | 'contents' | 'impact'>('info');
   const [copyStatus, setCopyStatus] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   
   // Auto-save logic
   useEffect(() => {
     if (!blogId || !isEditPanelOpen) return;
     
-    setIsSaving(true);
+    // Skip auto-save if no changes made locally
+    if (!isDirty) return;
 
     const handler = setTimeout(async () => {
       try {
+        setIsSaving(true);
+        setSaveError(null);
         await saveBlog(blogId, editData);
         setLastSaved(new Date());
-      } catch (err) {
-        console.error("Save failed:", err);
+        setIsDirty(false); // Reset dirty flag after successful save
+      } catch (err: any) {
+        console.error("Auto-save failed:", err);
+        setSaveError(err.message || "Cloud Save Failed");
       } finally {
         setTimeout(() => setIsSaving(false), 300);
       }
-    }, 600);
+    }, 5000); // 5s is requested by the user
 
     return () => clearTimeout(handler);
-  }, [editData, blogId, isEditPanelOpen]);
+  }, [editData, blogId, isEditPanelOpen, isDirty]);
   const [isEditAuthenticated, setIsEditAuthenticated] = useState(false);
   const [isDashboardAuthenticated, setIsDashboardAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [showPasswordDialog, setShowPasswordDialog] = useState<'edit' | 'dashboard' | null>(null);
 
+  const updateEditData = (newData: BlogData | ((prev: BlogData) => BlogData)) => {
+    setEditData(newData);
+    setIsDirty(true);
+    setSaveError(null);
+  };
+
   useEffect(() => {
     if (!blogId) return;
-    const unsub = onSnapshot(doc(db, 'blogs', blogId), (doc) => {
-      if (doc.exists()) {
-        const blog = { ...doc.data() as BlogData, id: doc.id };
+    const unsub = onSnapshot(doc(db, 'blogs', blogId), (snapshot) => {
+      if (snapshot.exists()) {
+        const blog = { ...snapshot.data() as BlogData, id: snapshot.id };
         setData(blog);
-        // Only update editData if the user isn't currently editing
-        // This prevents cursor jumps and overwrites while typing
-        if (!isEditPanelOpen) {
+        
+        // Sync local edit state only if panel is closed or if local state is empty/sync
+        const isCurrentlyPristine = !isEditPanelOpen;
+        if (isCurrentlyPristine) {
           setEditData(blog);
         }
       } else if (blogId === 'default-vibrant-blog') {
@@ -266,10 +283,10 @@ export default function App() {
     })
   );
 
-  const handleDragEndInfo = useCallback((event: DragEndEvent) => {
+   const handleDragEndInfo = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (active.id !== over?.id) {
-      setEditData((items) => {
+      updateEditData((items) => {
         const oldIndex = items.infoSections.findIndex((i) => i.id === active.id);
         const newIndex = items.infoSections.findIndex((i) => i.id === over?.id);
         return {
@@ -278,12 +295,12 @@ export default function App() {
         };
       });
     }
-  }, []);
+  }, [editData, blogId]);
 
   const handleDragEndImpact = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (active.id !== over?.id) {
-      setEditData((items) => {
+      updateEditData((items) => {
         const oldIndex = items.socialImpact.findIndex((i) => i.id === active.id);
         const newIndex = items.socialImpact.findIndex((i) => i.id === over?.id);
         return {
@@ -292,12 +309,12 @@ export default function App() {
         };
       });
     }
-  }, []);
+  }, [editData, blogId]);
 
   const handleDragEndContents = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (active.id !== over?.id) {
-      setEditData((items) => {
+      updateEditData((items) => {
         const oldIndex = items.contentBlocks.findIndex((i) => i.id === active.id);
         const newIndex = items.contentBlocks.findIndex((i) => i.id === over?.id);
         return {
@@ -306,7 +323,7 @@ export default function App() {
         };
       });
     }
-  }, []);
+  }, [editData, blogId]);
 
   const handlePasswordSubmit = () => {
     if (showPasswordDialog === 'dashboard') {
@@ -345,10 +362,13 @@ export default function App() {
     if (blogId) {
       try {
         setIsSaving(true);
+        setSaveError(null);
         await saveBlog(blogId, editData);
         setLastSaved(new Date());
-      } catch (err) {
+        setIsDirty(false);
+      } catch (err: any) {
         console.error("Manual save failed:", err);
+        setSaveError(err.message || "Manual Save Failed");
       } finally {
         setTimeout(() => setIsSaving(false), 500);
       }
@@ -407,13 +427,13 @@ export default function App() {
       reader.onloadend = () => {
         const url = reader.result as string;
         if (field === 'profilePic') {
-          setEditData({ ...editData, profile: { ...editData.profile, profilePic: url } });
+          updateEditData({ ...editData, profile: { ...editData.profile, profilePic: url } });
         } else if (field === 'coverPhoto') {
-          setEditData({ ...editData, profile: { ...editData.profile, coverPhoto: url } });
+          updateEditData({ ...editData, profile: { ...editData.profile, coverPhoto: url } });
         } else if (field === 'impactMedia' && impactIdx !== undefined) {
           const blocks = [...editData.socialImpact];
           blocks[impactIdx].mediaUrl = url;
-          setEditData({ ...editData, socialImpact: blocks });
+          updateEditData({ ...editData, socialImpact: blocks });
         }
       };
       reader.readAsDataURL(file);
@@ -435,7 +455,7 @@ export default function App() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Delete this site? This cannot be undone.")) {
+    if (confirm("🚨 DANGER ZONE\n\nAre you sure you want to delete this website permanently? This action cannot be undone and you will lose all progress.")) {
       await deleteBlog(id);
       if (id === blogId) {
         window.location.href = window.location.origin;
@@ -443,8 +463,25 @@ export default function App() {
     }
   };
 
+  const handleRename = async (id: string, currentName: string) => {
+    const newName = prompt("Rename Website:", currentName);
+    if (newName && newName !== currentName) {
+      await renameBlog(id, newName);
+    }
+  };
+
+  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    await toggleBlogStatus(id, currentStatus);
+  };
+
+  const handleShare = (id: string) => {
+    const url = `${window.location.origin}/?id=${id}`;
+    navigator.clipboard.writeText(url);
+    alert("🚀 Link copied to clipboard!\n\nYou can now share this link with anyone. The link will always show your latest cloud-saved changes.");
+  };
+
   const addInfoSection = () => {
-    setEditData({
+    updateEditData({
       ...editData,
       infoSections: [
         ...editData.infoSections,
@@ -454,7 +491,7 @@ export default function App() {
   };
 
   const addImpactBlock = (type: 'positive' | 'negative') => {
-    setEditData({
+    updateEditData({
       ...editData,
       socialImpact: [
         ...editData.socialImpact,
@@ -464,7 +501,7 @@ export default function App() {
   };
 
   const addBlock = (type: 'text' | 'image' | 'video') => {
-    setEditData({
+    updateEditData({
       ...editData,
       contentBlocks: [
         ...editData.contentBlocks,
@@ -575,7 +612,7 @@ export default function App() {
                {/* Dashboard Content */}
                <div className="flex-1 overflow-y-auto p-10 bg-white grid grid-cols-1 md:grid-cols-2 gap-8 scrollbar-hide">
                  {allBlogs.map((blog) => {
-                   const isActive = blog.id === blogId;
+                   const isCurrent = blog.id === blogId;
                    const lastUpdated = blog.updatedAt?.toDate 
                     ? blog.updatedAt.toDate().toLocaleDateString()
                     : new Date().toLocaleDateString();
@@ -583,32 +620,28 @@ export default function App() {
                    return (
                      <div 
                       key={blog.id} 
-                      className={`p-8 rounded-[2.5rem] border-2 transition-all group relative ${isActive ? 'bg-emerald-50/30 border-emerald-400/50 ring-4 ring-emerald-50' : 'bg-gray-50/50 border-gray-100 hover:border-indigo-200'}`}
+                      className={`p-8 rounded-[2.5rem] border-2 transition-all group relative ${isCurrent ? 'bg-emerald-50/10 border-emerald-400/30 shadow-sm' : 'bg-gray-50/50 border-gray-100 hover:border-indigo-200'}`}
                      >
                        <div className="flex justify-between items-start mb-4">
                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center text-gray-400">
                            <Globe size={24} />
                          </div>
                          <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                            <button className="p-2 bg-white rounded-lg hover:text-emerald-500 shadow-sm border border-gray-100"><Eye size={14} /></button>
                             <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(`${window.location.origin}/?id=${blog.id}`);
-                                setCopyStatus(true);
-                                setTimeout(() => setCopyStatus(false), 2000);
-                              }}
-                              className="p-2 bg-white rounded-lg hover:text-blue-500 shadow-sm border border-gray-100"
+                              onClick={() => handleToggleStatus(blog.id!, blog.isActive)}
+                              className={`p-2 bg-white rounded-lg shadow-sm border border-gray-100 flex items-center justify-center transition-colors ${blog.isActive ? 'text-emerald-500' : 'text-gray-400 hover:text-emerald-500'}`}
+                            >
+                              {blog.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
+                            </button>
+                            <button 
+                              onClick={() => handleShare(blog.id!)}
+                              className="p-2 bg-white rounded-lg hover:text-blue-500 shadow-sm border border-gray-100 flex items-center justify-center"
                             >
                               <LinkIcon size={14} />
                             </button>
                             <button 
-                              onClick={() => {
-                                setBlogId(blog.id!);
-                                setIsDashboardOpen(false);
-                                setIsDashboardAuthenticated(false);
-                                openProtected('edit');
-                              }}
-                              className="p-2 bg-white rounded-lg hover:text-amber-500 shadow-sm border border-gray-100"
+                              onClick={() => handleRename(blog.id!, blog.name)}
+                              className="p-2 bg-white rounded-lg hover:text-amber-500 shadow-sm border border-gray-100 flex items-center justify-center"
                             >
                               <Pencil size={14} />
                             </button>
@@ -625,7 +658,7 @@ export default function App() {
                        </div>
 
                        <div className="flex gap-2">
-                         {isActive ? (
+                         {blog.isActive ? (
                             <div className="w-full bg-emerald-50 text-emerald-600 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] text-center border-2 border-emerald-100">
                               Currently Active
                             </div>
@@ -663,26 +696,38 @@ export default function App() {
               <div>
                 <h2 className="text-xl font-black uppercase tracking-widest text-[#8A2BE2]">Studio Panel</h2>
                 <div className="flex items-center gap-2 mt-1">
-                  {isSaving ? (
+                  {saveError ? (
+                    <span className="flex items-center gap-1 text-[8px] text-red-500 font-black uppercase">
+                      <div className="w-1 h-1 rounded-full bg-red-500"></div> {saveError === "Quota exceeded." ? "Cloud Quota Full" : "Sync Error"}
+                    </span>
+                  ) : isSaving ? (
                     <span className="flex items-center gap-1 text-[8px] text-amber-500 font-black uppercase animate-pulse">
-                      <div className="w-1 h-1 rounded-full bg-amber-500"></div> Syncing to Cloud...
+                      <div className="w-1 h-1 rounded-full bg-amber-500"></div> Syncing...
+                    </span>
+                  ) : isDirty ? (
+                    <span className="flex items-center gap-1 text-[8px] text-amber-300 font-black uppercase">
+                      <div className="w-1 h-1 rounded-full bg-amber-300"></div> Pending Save (5s)
                     </span>
                   ) : lastSaved ? (
                     <span className="text-[8px] text-emerald-500 font-black uppercase flex items-center gap-1">
-                      <div className="w-1 h-1 rounded-full bg-emerald-500"></div> All Changes Saved
+                      <div className="w-1 h-1 rounded-full bg-emerald-500"></div> DONE
                     </span>
                   ) : (
-                    <span className="text-[8px] text-gray-500 font-black uppercase">Ready to Edit</span>
+                    <span className="text-[8px] text-gray-500 font-black uppercase">Draft Active</span>
                   )}
                 </div>
               </div>
                <div className="flex items-center gap-2">
                 <button 
                   onClick={manualSave}
-                  className="bg-[#8A2BE2]/20 text-[#8A2BE2] hover:bg-[#8A2BE2]/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all flex items-center gap-1.5"
-                  title="Manual Cloud Save"
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                    isDirty 
+                      ? "bg-[#8A2BE2] text-white shadow-[0_0_15px_rgba(138,43,226,0.5)] scale-105" 
+                      : "bg-gray-800 text-gray-500"
+                  }`}
+                  title="Force Cloud Save"
                 >
-                  <Cloud size={14} /> Save Change
+                  <Cloud size={14} /> {isSaving ? "Saving..." : "Save Cloud"}
                 </button>
                 <button 
                   id="print-btn"
@@ -743,7 +788,7 @@ export default function App() {
                           <input className="flex-1 bg-gray-800 p-2 rounded text-xs border border-transparent focus:border-[#8A2BE2] outline-none" 
                             placeholder="URL"
                             value={editData.profile.profilePic} 
-                            onChange={(e) => setEditData({ ...editData, profile: { ...editData.profile, profilePic: e.target.value } })}
+                            onChange={(e) => updateEditData({ ...editData, profile: { ...editData.profile, profilePic: e.target.value } })}
                           />
                         </div>
                       </div>
@@ -757,7 +802,7 @@ export default function App() {
                           <input className="flex-1 bg-gray-800 p-2 rounded text-xs border border-transparent focus:border-[#8A2BE2] outline-none" 
                             placeholder="URL"
                             value={editData.profile.coverPhoto} 
-                            onChange={(e) => setEditData({ ...editData, profile: { ...editData.profile, coverPhoto: e.target.value } })}
+                            onChange={(e) => updateEditData({ ...editData, profile: { ...editData.profile, coverPhoto: e.target.value } })}
                           />
                         </div>
                       </div>
@@ -776,7 +821,7 @@ export default function App() {
                             onChange={(e) => {
                               const words = [...editData.settings.typewriterWords];
                               words[i] = e.target.value;
-                              setEditData({ ...editData, settings: { ...editData.settings, typewriterWords: words } });
+                              updateEditData({ ...editData, settings: { ...editData.settings, typewriterWords: words } });
                             }}
                          />
                        ))}
@@ -790,12 +835,12 @@ export default function App() {
                     <input className="w-full bg-gray-800 p-3 rounded-xl text-sm font-bold" 
                       placeholder="Display Name"
                       value={editData.profile.name} 
-                      onChange={(e) => setEditData({ ...editData, profile: { ...editData.profile, name: e.target.value } })}
+                      onChange={(e) => updateEditData({ ...editData, profile: { ...editData.profile, name: e.target.value } })}
                     />
                     <textarea className="w-full bg-gray-800 p-3 rounded-xl text-sm h-16 resize-none" 
                       placeholder="My Bio..."
                       value={editData.profile.bio} 
-                      onChange={(e) => setEditData({ ...editData, profile: { ...editData.profile, bio: e.target.value } })}
+                      onChange={(e) => updateEditData({ ...editData, profile: { ...editData.profile, bio: e.target.value } })}
                     />
                   </section>
 
@@ -815,7 +860,7 @@ export default function App() {
                                   onChange={(e) => {
                                     const newSections = [...editData.infoSections];
                                     newSections[idx].label = e.target.value;
-                                    setEditData({ ...editData, infoSections: newSections });
+                                    updateEditData({ ...editData, infoSections: newSections });
                                   }}
                                 />
                                 <div className="flex gap-2">
@@ -824,10 +869,10 @@ export default function App() {
                                     onChange={(e) => {
                                       const newSections = [...editData.infoSections];
                                       newSections[idx].value = e.target.value;
-                                      setEditData({ ...editData, infoSections: newSections });
+                                      updateEditData({ ...editData, infoSections: newSections });
                                     }}
                                   />
-                                  <button onClick={() => setEditData({ ...editData, infoSections: editData.infoSections.filter(i => i.id !== s.id) })} className="text-red-500/50 hover:text-red-500"><Trash2 size={16} /></button>
+                                  <button onClick={() => updateEditData({ ...editData, infoSections: editData.infoSections.filter(i => i.id !== s.id) })} className="text-red-500/50 hover:text-red-500"><Trash2 size={16} /></button>
                                 </div>
                               </div>
                             </SortableGenericItem>
@@ -843,13 +888,13 @@ export default function App() {
                        <Palette size={16} />
                        <div className="flex gap-2">
                          {VIBRANT_COLORS.map(c => (
-                           <button key={c} onClick={() => setEditData({ ...editData, settings: { ...editData.settings, bgColor: c } })} className="w-6 h-6 rounded-full border border-gray-700" style={{ backgroundColor: c }} />
+                           <button key={c} onClick={() => updateEditData({ ...editData, settings: { ...editData.settings, bgColor: c } })} className="w-6 h-6 rounded-full border border-gray-700" style={{ backgroundColor: c }} />
                          ))}
                        </div>
                     </div>
                     <div className="flex items-center gap-4">
                        <TypeIcon size={16} />
-                       <input type="range" min="12" max="24" value={editData.settings.fontSize} onChange={(e) => setEditData({ ...editData, settings: { ...editData.settings, fontSize: parseInt(e.target.value) } })} className="flex-1 accent-[#8A2BE2]" />
+                       <input type="range" min="12" max="24" value={editData.settings.fontSize} onChange={(e) => updateEditData({ ...editData, settings: { ...editData.settings, fontSize: parseInt(e.target.value) } })} className="flex-1 accent-[#8A2BE2]" />
                        <span className="text-[10px] font-bold">{editData.settings.fontSize}px</span>
                     </div>
                       <div>
@@ -858,14 +903,14 @@ export default function App() {
                           type="text"
                           placeholder="Change password..."
                           value={editData.password || ''}
-                          onChange={(e) => setEditData({ ...editData, password: e.target.value })}
+                          onChange={(e) => updateEditData({ ...editData, password: e.target.value })}
                         />
                       </div>
                       <div>
                         <label className="text-[9px] uppercase font-bold text-gray-500 block mb-2">Typewriter Words (Comma separated)</label>
                       <input className="w-full bg-gray-800 p-3 rounded-xl text-xs" 
                         value={(editData.settings.typewriterWords || []).join(', ')}
-                        onChange={(e) => setEditData({ ...editData, settings: { ...editData.settings, typewriterWords: e.target.value.split(',').map(s => s.trim()) } })}
+                        onChange={(e) => updateEditData({ ...editData, settings: { ...editData.settings, typewriterWords: e.target.value.split(',').map(s => s.trim()) } })}
                       />
                     </div>
                   </section>
@@ -879,7 +924,7 @@ export default function App() {
                           value={(editData.profile.socials as any)?.[plat] || ''}
                           onChange={(e) => {
                             const newSocials = { ...editData.profile.socials, [plat]: e.target.value };
-                            setEditData({ ...editData, profile: { ...editData.profile, socials: newSocials } });
+                            updateEditData({ ...editData, profile: { ...editData.profile, socials: newSocials } });
                           }}
                         />
                       </div>
@@ -905,8 +950,8 @@ export default function App() {
                       <SortableContext items={editData.contentBlocks.map(b => b.id)} strategy={rectSortingStrategy}>
                         {editData.contentBlocks.map((block, bIdx) => (
                            <SortableGenericItem key={block.id} id={block.id} isEditMode={true}>
-                            <div className="bg-gray-800 p-4 pl-12 rounded-3xl border border-gray-700 relative group overflow-hidden">
-                              <button onClick={() => setEditData({ ...editData, contentBlocks: editData.contentBlocks.filter(b => b.id !== block.id) })} className="absolute -top-1 -right-1 bg-red-500 text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                             <div className="bg-gray-800 p-4 pl-12 rounded-3xl border border-gray-700 relative group overflow-hidden">
+                              <button onClick={() => updateEditData({ ...editData, contentBlocks: editData.contentBlocks.filter(b => b.id !== block.id) })} className="absolute -top-1 -right-1 bg-red-500 text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                 <Trash2 size={12} />
                               </button>
                               <h4 className="text-[9px] font-black uppercase mb-2 text-[#FF1694]">{block.type} BLOCK</h4>
@@ -915,7 +960,7 @@ export default function App() {
                                 onChange={(e) => {
                                   const blocks = [...editData.contentBlocks];
                                   blocks[bIdx].value = e.target.value;
-                                  setEditData({ ...editData, contentBlocks: blocks });
+                                  updateEditData({ ...editData, contentBlocks: blocks });
                                 }}
                                 placeholder={`Enter ${block.type} source/content...`}
                               />
@@ -933,7 +978,7 @@ export default function App() {
                        <input 
                          className="w-full bg-gray-800 p-3 rounded-xl text-sm font-bold border border-white/10"
                          value={editData.impactTitle || ''}
-                         onChange={(e) => setEditData({ ...editData, impactTitle: e.target.value })}
+                         onChange={(e) => updateEditData({ ...editData, impactTitle: e.target.value })}
                        />
                     </section>
 
@@ -952,7 +997,7 @@ export default function App() {
                           {editData.socialImpact?.map((block, idx) => (
                             <SortableGenericItem key={block.id} id={block.id} isEditMode={true}>
                               <div className={`p-4 pl-12 rounded-3xl border relative group ${block.type === 'positive' ? 'bg-green-900/10 border-green-800/30' : 'bg-red-900/10 border-red-800/30'}`}>
-                                <button onClick={() => setEditData({ ...editData, socialImpact: editData.socialImpact.filter(b => b.id !== block.id) })} className="absolute -top-1 -right-1 bg-gray-800 text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                <button onClick={() => updateEditData({ ...editData, socialImpact: editData.socialImpact.filter(b => b.id !== block.id) })} className="absolute -top-1 -right-1 bg-gray-800 text-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                   <Trash2 size={12} />
                                 </button>
                                 <div className="flex gap-2 mb-2">
@@ -961,7 +1006,7 @@ export default function App() {
                                      onChange={(e) => {
                                        const blocks = [...editData.socialImpact];
                                        blocks[idx].label = e.target.value;
-                                       setEditData({ ...editData, socialImpact: blocks });
+                                       updateEditData({ ...editData, socialImpact: blocks });
                                      }}
                                    />
                                    <div className="flex bg-gray-800 rounded px-1 gap-1">
@@ -969,7 +1014,7 @@ export default function App() {
                                        onClick={() => {
                                          const blocks = [...editData.socialImpact];
                                          blocks[idx].mediaType = blocks[idx].mediaType === 'image' ? 'none' : 'image';
-                                         setEditData({ ...editData, socialImpact: blocks });
+                                         updateEditData({ ...editData, socialImpact: blocks });
                                        }}
                                        className={`p-1 rounded ${block.mediaType === 'image' ? 'text-[#FFDE59]' : 'text-gray-500'}`}
                                      >
@@ -979,7 +1024,7 @@ export default function App() {
                                        onClick={() => {
                                          const blocks = [...editData.socialImpact];
                                          blocks[idx].mediaType = blocks[idx].mediaType === 'video' ? 'none' : 'video';
-                                         setEditData({ ...editData, socialImpact: blocks });
+                                         updateEditData({ ...editData, socialImpact: blocks });
                                        }}
                                        className={`p-1 rounded ${block.mediaType === 'video' ? 'text-[#FFDE59]' : 'text-gray-500'}`}
                                      >
@@ -992,7 +1037,7 @@ export default function App() {
                                      onChange={(e) => {
                                        const blocks = [...editData.socialImpact];
                                        blocks[idx].type = e.target.value as any;
-                                       setEditData({ ...editData, socialImpact: blocks });
+                                       updateEditData({ ...editData, socialImpact: blocks });
                                      }}
                                    >
                                       <option value="positive">Pos</option>
@@ -1006,7 +1051,7 @@ export default function App() {
                                   onChange={(e) => {
                                     const blocks = [...editData.socialImpact];
                                     blocks[idx].value = e.target.value;
-                                    setEditData({ ...editData, socialImpact: blocks });
+                                    updateEditData({ ...editData, socialImpact: blocks });
                                   }}
                                 />
 
@@ -1026,7 +1071,7 @@ export default function App() {
                                        onChange={(e) => {
                                          const blocks = [...editData.socialImpact];
                                          blocks[idx].mediaUrl = e.target.value;
-                                         setEditData({ ...editData, socialImpact: blocks });
+                                         updateEditData({ ...editData, socialImpact: blocks });
                                        }}
                                      />
                                   </div>
@@ -1059,6 +1104,34 @@ export default function App() {
       </AnimatePresence>
 
       <main className="flex-1 relative flex flex-col h-screen overflow-y-auto scrollbar-hide bg-[#FFF5F7]">
+        {/* Offline Overlay */}
+        {data.isActive === false && !isEditPanelOpen && !isDashboardOpen && (
+          <div className="fixed inset-0 bg-white z-[95] flex flex-col items-center justify-center p-10 text-center">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }}
+              className="max-w-md"
+            >
+              <div className="w-24 h-24 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-8">
+                <EyeOff size={48} />
+              </div>
+              <h1 className="text-4xl font-black uppercase tracking-tighter mb-4 text-gray-900">Site Offline</h1>
+              <p className="text-gray-500 font-medium leading-relaxed mb-10">
+                This website has been deactivated by the owner. Please check back later or contact the administrator if you believe this is an error.
+              </p>
+              <div className="flex flex-col gap-4 items-center">
+                <div className="h-1 w-20 bg-gray-100 rounded-full mb-4" />
+                <button 
+                  onClick={() => openProtected('dashboard')}
+                  className="text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-[#8A2BE2] transition-colors flex items-center gap-2"
+                >
+                  <Lock size={12} /> Owner Login
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Decorative Blobs */}
         <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-pink-200/50 rounded-full blur-[120px] pointer-events-none animate-pulse" />
         <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-200/40 rounded-full blur-[120px] pointer-events-none" />

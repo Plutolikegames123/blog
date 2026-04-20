@@ -7,36 +7,27 @@ service cloud.firestore {
     }
 
     // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidBlog(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.profile is map &&
+             data.settings is map &&
+             data.isActive is bool &&
+             (data.password == null || data.password is string);
     }
 
-    function isValidBlog(blog) {
-      return blog.name is string && blog.name.size() <= 100
-        && blog.profile is map
-        && blog.settings is map
-        && blog.infoSections is list
-        && blog.contentBlocks is list;
-    }
-
-    // Blogs collection
     match /blogs/{blogId} {
-      // Anyone can read a blog if they have the ID
-      allow get: if true;
-      allow list: if false; // Prevent scraping all blogs
-
-      // Create: Anyone can create a new blog
-      allow create: if isValidBlog(request.resource.data)
-        && request.resource.data.name.size() > 0;
-
-      // Update: For now, we allow updates. 
-      // In a production app, we would verify a password field here:
-      // allow update: if request.resource.data.password == resource.data.password;
-      // But rules can't easily "verify" a plain text password safely without auth.
-      allow update: if isValidBlog(request.resource.data)
-        && request.resource.data.name == resource.data.name; // Basic integrity
-        
-      allow delete: if false; // Prevent deletion for now
+      // Allowing public access for now as the app doesn't have a login flow, 
+      // but enforcing strict schema validation on writes.
+      // Note: In a production app, you should restrict writes to authorized users.
+      allow read: if true;
+      allow create: if isValidId(blogId) && isValidBlog(incoming());
+      allow update: if isValidBlog(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false; // Disallow deletion from client for safety
     }
   }
 }

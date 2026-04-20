@@ -2,10 +2,13 @@
   "entities": {
     "Blog": {
       "title": "Blog",
-      "description": "Stores all the data for an individual blog instance.",
+      "description": "Data structure for a vibrant blog site",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
+        "name": { "type": "string", "description": "The name of the blog" },
+        "password": { "type": "string", "description": "Password protection for the blog" },
+        "impactTitle": { "type": "string", "description": "Title for the impact section" },
+        "isActive": { "type": "boolean", "description": "Whether the blog is currently active" },
         "profile": {
           "type": "object",
           "properties": {
@@ -48,6 +51,20 @@
             }
           }
         },
+        "socialImpact": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["positive", "negative"] },
+              "label": { "type": "string" },
+              "value": { "type": "string" },
+              "mediaType": { "type": "string", "enum": ["none", "image", "video"] },
+              "mediaUrl": { "type": "string" }
+            }
+          }
+        },
         "settings": {
           "type": "object",
           "properties": {
@@ -57,7 +74,7 @@
             "bgColor": { "type": "string" }
           }
         },
-        "password": { "type": "string" }
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "profile", "settings"]
     }
@@ -65,7 +82,7 @@
   "firestore": {
     "/blogs/{blogId}": {
       "schema": "Blog",
-      "description": "Collection of vibrant blogs."
+      "description": "Individual blog site data"
     }
   }
 }

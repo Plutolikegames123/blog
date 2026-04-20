@@ -3,7 +3,7 @@ import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection, addDoc, dele
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 
 export interface Profile {
   name: string;
@@ -53,6 +53,7 @@ export interface BlogData {
   name: string;
   password?: string;
   impactTitle?: string;
+  isActive: boolean;
   profile: Profile;
   infoSections: InfoSection[];
   contentBlocks: ContentBlock[];
@@ -65,6 +66,7 @@ export const INITIAL_DATA: BlogData = {
   name: "My Vibrant Blog",
   password: "GROWINGOLD9886",
   impactTitle: "Social Media Impact",
+  isActive: true,
   profile: {
     name: 'Enrico F. Tubal',
     email: 'enricotubal2005@gmail.com',
@@ -116,6 +118,14 @@ export const duplicateBlog = async (data: BlogData) => {
 
 export const deleteBlog = async (id: string) => {
   await deleteDoc(doc(db, 'blogs', id));
+};
+
+export const renameBlog = async (id: string, newName: string) => {
+  await setDoc(doc(db, 'blogs', id), { name: newName, updatedAt: serverTimestamp() }, { merge: true });
+};
+
+export const toggleBlogStatus = async (id: string, currentStatus: boolean) => {
+  await setDoc(doc(db, 'blogs', id), { isActive: !currentStatus, updatedAt: serverTimestamp() }, { merge: true });
 };
 
 export const createNewBlog = async (name: string = "New Site") => {
